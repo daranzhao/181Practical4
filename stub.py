@@ -42,9 +42,9 @@ class Learner(object):
         # Consolidate States
 
         # Gravity Calculation
-        if last_state is not None and (self.gravity != 1 or self.gravity != 4):
-            time = (state['tree']['dist'] - last_state['tree']['dist'])/25.
-            vel_change = state['monkey']['vel'] - last_state['monkey']['vel']
+        if self.last_state is not None and (self.gravity != 1 or self.gravity != 4):
+            time = (state['tree']['dist'] - self.last_state['tree']['dist'])/25.
+            vel_change = state['monkey']['vel'] - self.last_state['monkey']['vel']
             gravity = vel_change/time
 
 
@@ -52,16 +52,53 @@ class Learner(object):
         # the next stump
 
         # State Calculations - Jump
+        if self.last_state is not None and self.last_state['tree']['dist'] < state['tree']['dist']:
+            new_score = self.last_state['score'] + 1
+            new_dist = state['tree']['dist']
+            new_top = state['tree']['top']
+            new_bot = state['tree']['bot']
+        elif self.last_state == None:
+            new_score = 0
+            new_dist = state['tree']['dist']
+            new_top = state['tree']['top']
+            new_bot = state['tree']['bot']
+        else:
+            new_score = self.last_state['score']
+            new_dist = self.last_state['tree']['dist']
+            new_top = self.last_state['tree']['top']
+            new_bot = self.last_state['tree']['bot'] 
+        jump_state = {
+            'score': new_score,
+            'tree': {
+                'top': new_top,
+                'bot': new_bot,
+            },
+            'monkey': {
+                'vel': 15,
+                'top': state['monkey']['top'] + 15,
+                'bot': state['monkey']['bot'] + 15,
+            }
+        }
 
-
-        # State Calclation - Stay
-
+        # State Calculation - Stay
+        stay_state = {
+            'score': new_score,
+            'tree': {
+                'top': new_top,
+                'bot': new_bot,
+            },
+            'monkey': {
+                'vel': state['monkey']['vel'],
+                'top': state['monkey']['top'] - state['monkey']['vel'],
+                'bot': state['monkey']['bot'] - state['monkey']['vel'],
+            }
+        }
 
         # !!!!!!!!!!!!!!!
         # Potential issue: score is included in the state but probably shouldnt affect
         # our decision
 
-        if self.last_action = 0:
+        if self.last_action == 0:
             state = stay_state
         else:
             state = jump_state
@@ -76,7 +113,7 @@ class Learner(object):
         
 
         # Update qValues
-        derivative = self.values[(self.last_state, self.last_action)]
+        derivative = self.values[(self.last_state, self.last_action)]\
                         - (self.last_reward - gamma * self.values[(self.state, new_action)])
         self.values[self.last_state, self.last_action] -= learning_rate * derivative
 

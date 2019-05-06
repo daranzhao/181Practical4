@@ -7,30 +7,24 @@ import random
 
 from SwingyMonkey import SwingyMonkey
 
-#in order: tree dist, tree top, tree bot, monkey vel, monkey top, monkey bot
-def format_into_tuple(state_dict, gravity):
-    # return (state_dict['tree']['dist']//5, state_dict['tree']['top']//5,\
-    #     state_dict['tree']['bot']//5, state_dict['monkey']['vel']//5,\
-    #     state_dict['monkey']['top']//5, state_dict['monkey']['bot']//5)
 
-    danger_high = state_dict['monkey']['top'] > 350
-    danger_low = state_dict['monkey']['bot'] < 50
-    return (state_dict['tree']['dist']//100, (state_dict['tree']['top'] - state_dict['monkey']['top'])//100,\
-            (state_dict['tree']['bot']-state_dict['monkey']['bot'])//100, gravity, danger_high, danger_low)
 
 class Learner(object):
     '''
     This agent jumps randomly.
     '''
 
-    def __init__(self):
+    def __init__(self, it, round_size):
         self.last_state  = None
         self.last_state_unformat = None
         self.last_action = None
         self.last_reward = None
         self.curr_gravity = 0
-        self.cnt = 0
+        self.epoch = 1
+        self.round_size = round_size
+        self.it = it
         self.values = util.Counter()
+        self.epsilon = [0.2 * self.transformSigmoid(self.epoch)]
         self.death_causes = {-10:[], -5:[]}
 
 
@@ -40,21 +34,47 @@ class Learner(object):
         self.last_action = None
         self.last_reward = None
         self.curr_gravity = None
-        self.cnt = 0
-
+        self.epoch += 1
+        self.epsilon.append(0.2 * self.transformSigmoid(self.epoch))
         #print(self.death_causes)
+
+    def getValues(self):
+        return self.values
+
+    def getEpsilon(self):
+        return self.epsilon
+
+    def getDeathCauses(self):
+        return self.death_causes
+
+    def transformSigmoid(self, it):
+        x = self.it/1.1 - it
+        sig = np.exp(x)/(np.exp(x) + 1)
+        return sig
+
+    # in order: tree dist, tree top, tree bot, monkey vel, monkey top, monkey bot
+    def format_into_tuple(self, state_dict, gravity):
+        # return (state_dict['tree']['dist'], state_dict['tree']['top'],\
+        #     state_dict['tree']['bot'], state_dict['monkey']['vel'],\
+        #     state_dict['monkey']['top'], state_dict['monkey']['bot'])
+
+        danger_high = state_dict['monkey']['top'] > 350
+        danger_low = state_dict['monkey']['bot'] < 50
+        # danger_high = 0
+        # danger_low = 0
+        return (state_dict['tree']['dist'] // self.round_size, (state_dict['tree']['top'] - state_dict['monkey']['top']) // self.round_size, \
+                gravity, danger_high, danger_low)
 
     def action_callback(self, state):
         '''
         Implement this function to learn things and take actions.
         Return 0 if you don't want to jump and 1 if you do.
         '''
-        epsilon = 0.2
+        epsilon = self.epsilon[-1]
         gamma = 1
         learning_rate = 0.3
 
         # Infer Gravity
-        self.cnt += 1
         if self.curr_gravity == None and self.last_state_unformat != None:
             time = (state['tree']['dist'] - self.last_state_unformat['tree']['dist'])/25.
             vel_change = state['monkey']['vel'] - self.last_state_unformat['monkey']['vel']
@@ -64,9 +84,9 @@ class Learner(object):
 
         # Format state
         if self.curr_gravity == None:
-            state_formatted = format_into_tuple(state, 4)
+            state_formatted = self.format_into_tuple(state, 4)
         else:
-            state_formatted = format_into_tuple(state, self.curr_gravity)
+            state_formatted = self.format_into_tuple(state, self.curr_gravity)
 
         if self.last_action is not None:
             last_Q = self.values[self.last_state, self.last_action]
@@ -76,6 +96,9 @@ class Learner(object):
             else:
                 next_val = self.values[state_formatted, 0]
                 next_action = 0
+            if npr.rand() < epsilon:
+                next_action = npr.rand() < 0.1
+
             self.values[self.last_state, self.last_action] =\
                 last_Q - (learning_rate)*(last_Q - self.last_reward - gamma*next_val)
             self.last_action = next_action
@@ -88,83 +111,6 @@ class Learner(object):
         self.last_state = state_formatted
         self.last_state_unformat = state
         return self.last_action
-
-
-
-        # use tree positions in game data (SwingMonkey.trees) if we move past
-        # the next stump
-
-        # # State Calculations - Jump
-        # if self.last_state != None and self.last_state['tree']['dist'] < state['tree']['dist']:
-        #     new_score = self.last_state['score'] + 1
-        #     new_dist = state['tree']['dist']
-        #     new_top = state['tree']['top']
-        #     new_bot = state['tree']['bot']
-        # elif self.last_state == None:
-        #     new_score = 0
-        #     new_dist = state['tree']['dist']
-        #     new_top = state['tree']['top']
-        #     new_bot = state['tree']['bot']
-        # else:
-        #     new_score = self.last_state['score']
-        #     new_dist = self.last_state['tree']['dist']
-        #     new_top = self.last_state['tree']['top']
-        #     new_bot = self.last_state['tree']['bot'] 
-        # jump_state = {
-        #     'score': new_score,
-        #     'tree': {
-        #         'dist': new_dist,
-        #         'top': new_top,
-        #         'bot': new_bot,
-        #     },
-        #     'monkey': {
-        #         'vel': 15,
-        #         'top': state['monkey']['top'] + 15,
-        #         'bot': state['monkey']['bot'] + 15,
-        #     }
-        # }
-
-        # # State Calculation - Stay
-        # stay_state = {
-        #     'score': new_score,
-        #     'tree': {
-        #         'dist': new_dist,
-        #         'top': new_top,
-        #         'bot': new_bot,
-        #     },
-        #     'monkey': {
-        #         'vel': state['monkey']['vel'],
-        #         'top': state['monkey']['top'] - state['monkey']['vel'],
-        #         'bot': state['monkey']['bot'] - state['monkey']['vel'],
-        #     }
-        # }
-
-        # !!!!!!!!!!!!!!!
-        # Potential issue: score is included in the state but probably shouldnt affect
-        # our decision
-
-        # if self.last_action == 0:
-        #     state = stay_state
-        # else:
-        #     state = jump_state
-
-        # jump_value = (self.values[(format_into_tuple(state),1)],1)
-        # stay_value = (self.values[(format_into_tuple(state),0)],0)
-        # qValues = [jump_value,stay_value]
-        # if util.flipCoin(epsilon):
-        #     new_action = random.choice([0,1])
-        # else:
-        #     new_action = max(qValues)[1]
-        
-
-        # # Update qValues
-        # derivative = self.values[(format_into_tuple(self.last_state), self.last_action)]\
-        #             - (self.last_reward - gamma * self.values[(format_into_tuple(self.state), new_action)])
-        # self.values[format_into_tuple(self.last_state), self.last_action] -= learning_rate * derivative
-
-        # self.last_action = new_action
-        # self.last_state = state
-        # return self.last_action
 
     def reward_callback(self, reward):
         '''This gets called so you can see what reward you get.'''
@@ -195,31 +141,76 @@ def run_games(learner, hist, iters = 100, t_len = 10):
 
         # Reset the state of the learner.
         learner.reset()
+
     pg.quit()
     return
 
-
+round_size = [10, 50, 100, 150, 200]
+round_size = [100]
 if __name__ == '__main__':
 
-    it = 20
-    avg_scores = []
-    for i in range(it):
-        # Select agent.
-        agent = Learner()
+    values = util.Counter()
+    death_causes = util.Counter()
+    scores = {}
+    for r in round_size:
+        repeats = 50
+        it_in_repeat = 100
+        curr_round_score = []
+        for i in range(repeats):
+            # Select agent.
+            agent = Learner(it_in_repeat, r)
 
-        # Empty list to save history.
-        hist = []
+            # Empty list to save history.
+            hist = []
 
-        # Run games.
-        run_games(agent, hist, 100, 1)
+            # Run games.
+            run_games(agent, hist, it_in_repeat, 1)
 
-        # Score Avg
-        avg_scores.append(np.mean(hist))
+            # Add to values counter
+            values += agent.getValues()
 
-        # Save history.
-        np.save('hist',np.array(hist))
+            # # Get Epsilon
+            # import matplotlib.pyplot as plt
+            #
+            # plt.figure()
+            # plt.plot(agent.getEpsilon())
+            # plt.show()
 
-print(avg_scores)
-print(np.mean(avg_scores))
+            # Score Avg
+            curr_round_score.append(hist)
 
+            # Print Death Causes
+            death_causes += agent.getDeathCauses()
+
+            # Save history.
+            np.save('hist',np.array(hist))
+        scores[r] = curr_round_score
+    # Get Values
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.hist(list(values.values()), bins = np.arange(-10, 10, 1))
+    # plt.title("Q Value Distribution")
+    # plt.show()
+
+import matplotlib.pyplot as plt
+# # Death Causes: Show distribution of death locations
+# plt.figure()
+# plt.hist(death_causes[-10])
+# plt.title("Location of Character (bot) before Death")
+# plt.show()
+
+
+for r in round_size:
+    curr_scores = np.asarray(scores[r])
+    print(scores)
+
+    print_scores = curr_scores.flatten()
+    print_scores = [max(j) for j in curr_scores]
+    plt.figure()
+    bins = np.arange(0, max(print_scores) + 2, 1)
+    plt.hist(print_scores, bins = bins)
+    plt.xticks(np.arange(0, max(print_scores) + 2, 1))
+    plt.title('Max Scores Across Iterations for Rounding ' + str(r))
+    plt.show()
+    print("hello")
 

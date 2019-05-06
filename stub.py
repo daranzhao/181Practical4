@@ -8,10 +8,15 @@ import random
 from SwingyMonkey import SwingyMonkey
 
 #in order: tree dist, tree top, tree bot, monkey vel, monkey top, monkey bot
-def format_into_tuple(state_dict):
-    return (state_dict['tree']['dist']//5, state_dict['tree']['top']//5,\
-        state_dict['tree']['bot']//5, state_dict['monkey']['vel']//5,\
-        state_dict['monkey']['top']//5, state_dict['monkey']['bot']//5)
+def format_into_tuple(state_dict, gravity):
+    # return (state_dict['tree']['dist']//5, state_dict['tree']['top']//5,\
+    #     state_dict['tree']['bot']//5, state_dict['monkey']['vel']//5,\
+    #     state_dict['monkey']['top']//5, state_dict['monkey']['bot']//5)
+
+    danger_high = state_dict['monkey']['top'] > 350
+    danger_low = state_dict['monkey']['bot'] < 50
+    return (state_dict['tree']['dist']//100, (state_dict['tree']['top'] - state_dict['monkey']['top'])//100,\
+            (state_dict['tree']['bot']-state_dict['monkey']['bot'])//100, gravity, danger_high, danger_low)
 
 class Learner(object):
     '''
@@ -20,18 +25,24 @@ class Learner(object):
 
     def __init__(self):
         self.last_state  = None
+        self.last_state_unformat = None
         self.last_action = None
         self.last_reward = None
-        self.gravity = 0
+        self.curr_gravity = 0
+        self.cnt = 0
         self.values = util.Counter()
+        self.death_causes = {-10:[], -5:[]}
 
 
     def reset(self):
         self.last_state  = None
+        self.last_state_unformat = None
         self.last_action = None
         self.last_reward = None
-        self.gravity = None
-        self.values = None
+        self.curr_gravity = None
+        self.cnt = 0
+
+        #print(self.death_causes)
 
     def action_callback(self, state):
         '''
@@ -39,27 +50,34 @@ class Learner(object):
         Return 0 if you don't want to jump and 1 if you do.
         '''
         epsilon = 0.2
-        gamma = 0.9
-        learning_rate = 0.9
+        gamma = 1
+        learning_rate = 0.3
+
+        # Infer Gravity
+        self.cnt += 1
+        if self.curr_gravity == None and self.last_state_unformat != None:
+            time = (state['tree']['dist'] - self.last_state_unformat['tree']['dist'])/25.
+            vel_change = state['monkey']['vel'] - self.last_state_unformat['monkey']['vel']
+            gravity = vel_change/time
+            if(gravity == 4 or gravity == 1):
+                self.curr_gravity = gravity
 
         # Format state
-        initial = format_into_tuple(state)
+        if self.curr_gravity == None:
+            state_formatted = format_into_tuple(state, 4)
+        else:
+            state_formatted = format_into_tuple(state, self.curr_gravity)
 
         if self.last_action is not None:
-            # Gravity
-            # if (self.gravity != 1 or self.gravity != 4):
-            #     time = (state['tree']['dist'] - self.last_state['tree']['dist'])/25.
-            #     vel_change = state['monkey']['vel'] - self.last_state['monkey']['vel']
-            #     gravity = vel_change/time
             last_Q = self.values[self.last_state, self.last_action]
-            if self.values[initial, 1] > self.values[initial, 0]:
-                next_val = self.values[initial, 1]
+            if self.values[state_formatted, 1] > self.values[state_formatted, 0]:
+                next_val = self.values[state_formatted, 1]
                 next_action = 1
             else:
-                next_val = self.values[initial, 0]
+                next_val = self.values[state_formatted, 0]
                 next_action = 0
             self.values[self.last_state, self.last_action] =\
-                last_Q + (1-learning_rate)*(self.last_reward + gamma*next_val - last_Q)
+                last_Q - (learning_rate)*(last_Q - self.last_reward - gamma*next_val)
             self.last_action = next_action
         else:
             if npr.rand() < epsilon:
@@ -67,8 +85,8 @@ class Learner(object):
             else:
                 self.last_action = 1
 
-        self.last_state = initial
-
+        self.last_state = state_formatted
+        self.last_state_unformat = state
         return self.last_action
 
 
@@ -150,10 +168,13 @@ class Learner(object):
 
     def reward_callback(self, reward):
         '''This gets called so you can see what reward you get.'''
-
         self.last_reward = reward
+        if(reward < 0):
+            self.death_causes[reward].append(self.last_state_unformat['monkey']['bot'])
+            #print(reward)
+            #print(np.mean(self.death_causes[reward]))
 
-def run_games(learner, hist, iters = 100, t_len = 100):
+def run_games(learner, hist, iters = 100, t_len = 10):
     '''
     Driver function to simulate learning by having the agent play a sequence of games.
     '''
@@ -180,16 +201,25 @@ def run_games(learner, hist, iters = 100, t_len = 100):
 
 if __name__ == '__main__':
 
-	# Select agent.
-	agent = Learner()
+    it = 20
+    avg_scores = []
+    for i in range(it):
+        # Select agent.
+        agent = Learner()
 
-	# Empty list to save history.
-	hist = []
+        # Empty list to save history.
+        hist = []
 
-	# Run games. 
-	run_games(agent, hist, 20, 10)
+        # Run games.
+        run_games(agent, hist, 100, 1)
 
-	# Save history. 
-	np.save('hist',np.array(hist))
+        # Score Avg
+        avg_scores.append(np.mean(hist))
+
+        # Save history.
+        np.save('hist',np.array(hist))
+
+print(avg_scores)
+print(np.mean(avg_scores))
 
 

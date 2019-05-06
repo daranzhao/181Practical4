@@ -1,3 +1,7 @@
+import sys
+import inspect
+import heapq, random
+
 def flipCoin( p ):
     r = random.random()
     return r < p

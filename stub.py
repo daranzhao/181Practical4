@@ -44,6 +44,7 @@ class Learner(object):
 
         # Format state
         initial = format_into_tuple(state)
+
         if self.last_action is not None:
             # Gravity
             # if (self.gravity != 1 or self.gravity != 4):
@@ -61,7 +62,10 @@ class Learner(object):
                 last_Q + (1-learning_rate)*(self.last_reward + gamma*next_val - last_Q)
             self.last_action = next_action
         else:
-            self.last_action = npr.rand() < 0.1
+            if npr.rand() < epsilon:
+                self.last_action = 0
+            else:
+                self.last_action = 1
 
         self.last_state = initial
 
